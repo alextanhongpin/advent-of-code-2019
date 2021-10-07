@@ -3,19 +3,28 @@ use std::fs;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let input = fs::read_to_string("./src/input.txt")?;
-    println!("part 1: {:?}", exec_intcode(&input.trim()));
+    println!("part 1: {:?}", exec_intcode(&input.trim(), 12, 2));
+
+    for noun in 0..=99 {
+        for verb in 0..=99 {
+            if "19690720" == exec_intcode(&input.trim(), noun, verb) {
+                println!("part 2: {}", noun * 100 + verb);
+                break;
+            }
+        }
+    }
 
     Ok(())
 }
 
-fn exec_intcode(code: &str) -> String {
+fn exec_intcode(code: &str, noun: i32, verb: i32) -> String {
     let mut codes: Vec<String> = code.split(',').map(str::to_string).collect();
 
-    codes[1] = "12".into();
-    codes[2] = "2".into();
+    codes[1] = noun.to_string();
+    codes[2] = verb.to_string();
 
     let solution = intcode(&codes.join(","));
-    if let Some(&s) = solution.split(',').take(1).collect::<Vec<&str>>().first() {
+    if let Some(s) = solution.split(',').next() {
         s.into()
     } else {
         "".into()
@@ -40,7 +49,7 @@ fn intcode(code: &str) -> String {
                 i += 4;
             }
             [99] | [99, ..] => break,
-            _ => break,
+            _ => panic!("invalid"),
         }
     }
 
