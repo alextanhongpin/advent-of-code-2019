@@ -17,54 +17,50 @@ fn main() {
     println!("part 2: {}", part2);
 }
 
-fn valid_password(pwd: &str) -> bool {
-    let mut has_adjacent = false;
-    let mut chars = pwd.chars();
-    let mut prev: u32 = chars.next().unwrap().to_digit(10).unwrap();
+fn parse_password(pwd: &str) -> Option<HashMap<u32, u32>> {
+    let mut chars: Vec<char> = pwd.chars().collect();
+    chars.sort();
 
-    for n in chars {
-        let n = n.to_digit(10).unwrap();
-        match n {
-            _ if n < prev => return false,
-            _ if n == prev => {
-                if !has_adjacent {
-                    has_adjacent = true;
-                }
-            }
-            _ => {}
-        }
-        prev = n;
+    let sorted: String = chars.into_iter().collect();
+    if sorted != pwd {
+        return None;
     }
 
-    has_adjacent
+    let mut map: HashMap<u32, u32> = HashMap::new();
+    for c in pwd.chars() {
+        let count = map.entry(c.to_digit(10).unwrap()).or_insert(0);
+        *count += 1;
+    }
+
+    Some(map)
+}
+
+fn valid_password(pwd: &str) -> bool {
+    match parse_password(pwd) {
+        Some(chars) => {
+            for &v in chars.values() {
+                if v >= 2 {
+                    return true;
+                }
+            }
+            false
+        }
+        None => false,
+    }
 }
 
 fn valid_password_group(pwd: &str) -> bool {
-    let mut counter: HashMap<u32, u32> = HashMap::new();
-
-    let mut chars = pwd.chars();
-    let mut prev: u32 = chars.next().unwrap().to_digit(10).unwrap();
-
-    for n in chars {
-        let n = n.to_digit(10).unwrap();
-        match n {
-            _ if n < prev => return false,
-            m if n == prev => {
-                let count = counter.entry(m).or_insert(1);
-                *count += 1;
+    match parse_password(pwd) {
+        Some(chars) => {
+            for &v in chars.values() {
+                if v == 2 {
+                    return true;
+                }
             }
-            _ => {}
+            false
         }
-        prev = n;
+        None => false,
     }
-
-    for (_, &v) in counter.iter() {
-        if v == 2 {
-            return true;
-        }
-    }
-
-    false
 }
 
 #[cfg(test)]
