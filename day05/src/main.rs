@@ -18,97 +18,72 @@ fn intcode(code: &str, input: i32) -> i32 {
 
     let mut out = 0;
     let mut i = 0;
+
     loop {
-        match codes[i..] {
-            [c, a, b, p, ..] if c % 100 == 1 => {
-                match c {
-                    1 => {
-                        codes[p as usize] = codes[a as usize] + codes[b as usize];
-                    }
-                    101 => {
-                        codes[p as usize] = a + codes[b as usize];
-                    }
-                    1001 => {
-                        codes[p as usize] = codes[a as usize] + b;
-                    }
-                    1101 => {
-                        codes[p as usize] = a + b;
-                    }
-                    _ => panic!("invalid: {}", c),
+        let mode = |i: i32, a: i32, b: i32| match i {
+            _ if i > 1100 => (a, b),
+            _ if i > 1000 => (codes[a as usize], b),
+            _ if i > 100 => (a, codes[b as usize]),
+            _ => (codes[a as usize], codes[b as usize]),
+        };
+        match codes[i] % 100 {
+            1 => {
+                if let [c, a, b, p] = codes[i..i + 4] {
+                    let (a, b) = mode(c, a, b);
+                    codes[p as usize] = a + b;
+                    i += 4;
                 }
-                i += 4;
             }
-            [c, a, b, p, ..] if c % 100 == 2 => {
-                match c {
-                    2 => {
-                        codes[p as usize] = codes[a as usize] * codes[b as usize];
-                    }
-                    102 => {
-                        codes[p as usize] = a * codes[b as usize];
-                    }
-                    1002 => {
-                        codes[p as usize] = codes[a as usize] * b;
-                    }
-                    1102 => {
-                        codes[p as usize] = a * b;
-                    }
-                    _ => panic!("invalid: {}", c),
+            2 => {
+                if let [c, a, b, p] = codes[i..i + 4] {
+                    let (a, b) = mode(c, a, b);
+                    codes[p as usize] = a * b;
+                    i += 4;
                 }
-                i += 4;
             }
-            [3, p, ..] => {
-                codes[p as usize] = input;
-                i += 2;
+            3 => {
+                if let [_, p] = codes[i..i + 2] {
+                    codes[p as usize] = input;
+                    i += 2;
+                }
             }
-            [c, p, ..] if c % 100 == 4 => {
-                out = match c {
-                    4 => codes[p as usize],
-                    _ => p,
-                };
-                i += 2;
+            4 => {
+                if let [c, p] = codes[i..i + 2] {
+                    out = match c {
+                        4 => codes[p as usize],
+                        _ => p,
+                    };
+                    i += 2;
+                }
             }
-            [c, a, b, ..] if c % 100 == 5 => {
-                let (a, b) = match c {
-                    5 => (codes[a as usize], codes[b as usize]),
-                    105 => (a, codes[b as usize]),
-                    1005 => (codes[a as usize], b),
-                    _ => (a, b),
-                };
-                i = if a != 0 { b as usize } else { i + 2 }
+            5 => {
+                if let [c, a, b] = codes[i..i + 3] {
+                    let (a, b) = mode(c, a, b);
+                    i = if a != 0 { b as usize } else { i + 3 }
+                }
             }
-            [c, a, b, ..] if c % 100 == 6 => {
-                let (a, b) = match c {
-                    6 => (codes[a as usize], codes[b as usize]),
-                    106 => (a, codes[b as usize]),
-                    1006 => (codes[a as usize], b),
-                    _ => (a, b),
-                };
-                i = if a == 0 { b as usize } else { i + 2 }
+            6 => {
+                if let [c, a, b] = codes[i..i + 3] {
+                    let (a, b) = mode(c, a, b);
+                    i = if a == 0 { b as usize } else { i + 3 }
+                }
             }
-            [c, a, b, p, ..] if c % 100 == 7 => {
-                let (a, b) = match c {
-                    7 => (codes[a as usize], codes[b as usize]),
-                    107 => (a, codes[b as usize]),
-                    1007 => (codes[a as usize], b),
-                    _ => (a, b),
-                };
-                codes[p as usize] = if a < b { 1 } else { 0 };
-                i += 4;
+            7 => {
+                if let [c, a, b, p] = codes[i..i + 4] {
+                    let (a, b) = mode(c, a, b);
+                    codes[p as usize] = if a < b { 1 } else { 0 };
+                    i += 4;
+                }
             }
-            [c, a, b, p, ..] if c % 100 == 8 => {
-                let (a, b) = match c {
-                    8 => (codes[a as usize], codes[b as usize]),
-                    108 => (a, codes[b as usize]),
-                    1008 => (codes[a as usize], b),
-                    _ => (a, b),
-                };
-                codes[p as usize] = if a == b { 1 } else { 0 };
-                i += 4;
+            8 => {
+                if let [c, a, b, p] = codes[i..i + 4] {
+                    let (a, b) = mode(c, a, b);
+                    codes[p as usize] = if a == b { 1 } else { 0 };
+                    i += 4;
+                }
             }
-            [99] | [99, ..] => break,
-            _ => {
-                i += 1;
-            }
+            99 => break,
+            _ => panic!("invalid"),
         }
     }
 
