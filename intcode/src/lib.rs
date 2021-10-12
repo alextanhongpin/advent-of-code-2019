@@ -1,3 +1,124 @@
+#[derive(Debug)]
+pub struct Intcode {
+    pub input: Vec<i32>,
+    pub done: bool,
+    pub waiting: bool,
+    pub i: usize,
+    pub codes: Vec<i32>,
+}
+
+impl Intcode {
+    pub fn new(code: &str, input: Vec<i32>) -> Self {
+        let mut input = input;
+        input.reverse();
+
+        let codes: Vec<i32> = code
+            .split(',')
+            .map(|line| line.parse::<i32>().unwrap())
+            .collect::<Vec<i32>>();
+        Intcode {
+            input: input,
+            done: false,
+            waiting: false,
+            i: 0,
+            codes: codes,
+        }
+    }
+
+    pub fn set_input(&mut self, input: i32) {
+        self.input.insert(0, input);
+    }
+
+    pub fn exec(&mut self) -> Option<i32> {
+        let codes = &mut self.codes;
+
+        let mut i = self.i;
+        let mut out: Option<i32> = None;
+
+        loop {
+            let mode = |i: i32, a: i32, b: i32| match i {
+                _ if i > 1100 => (a, b),
+                _ if i > 1000 => (codes[a as usize], b),
+                _ if i > 100 => (a, codes[b as usize]),
+                _ => (codes[a as usize], codes[b as usize]),
+            };
+            match codes[i] % 100 {
+                1 => {
+                    if let [c, a, b, p] = codes[i..i + 4] {
+                        let (a, b) = mode(c, a, b);
+                        codes[p as usize] = a + b;
+                        i += 4;
+                    }
+                }
+                2 => {
+                    if let [c, a, b, p] = codes[i..i + 4] {
+                        let (a, b) = mode(c, a, b);
+                        codes[p as usize] = a * b;
+                        i += 4;
+                    }
+                }
+                3 => {
+                    if let [_, p] = codes[i..i + 2] {
+                        if self.input.len() == 0 {
+                            self.waiting = true;
+                            break;
+                        }
+                        self.waiting = false;
+                        codes[p as usize] = self.input.pop().unwrap();
+                        i += 2;
+                    }
+                }
+                4 => {
+                    if let [c, p] = codes[i..i + 2] {
+                        out = match c {
+                            4 => Some(codes[p as usize]),
+                            _ => Some(p),
+                        };
+                        i += 2;
+                        break;
+                    }
+                }
+                5 => {
+                    if let [c, a, b] = codes[i..i + 3] {
+                        let (a, b) = mode(c, a, b);
+                        i = if a != 0 { b as usize } else { i + 3 }
+                    }
+                }
+                6 => {
+                    if let [c, a, b] = codes[i..i + 3] {
+                        let (a, b) = mode(c, a, b);
+                        i = if a == 0 { b as usize } else { i + 3 }
+                    }
+                }
+                7 => {
+                    if let [c, a, b, p] = codes[i..i + 4] {
+                        let (a, b) = mode(c, a, b);
+                        codes[p as usize] = if a < b { 1 } else { 0 };
+                        i += 4;
+                    }
+                }
+                8 => {
+                    if let [c, a, b, p] = codes[i..i + 4] {
+                        let (a, b) = mode(c, a, b);
+                        codes[p as usize] = if a == b { 1 } else { 0 };
+                        i += 4;
+                    }
+                }
+                99 => {
+                    self.done = true;
+                    break;
+                }
+                _ => panic!("invalid"),
+            }
+        }
+
+        self.i = i;
+        self.codes = codes.to_owned();
+
+        out
+    }
+}
+
 pub fn program(code: &str, input: Vec<i32>) -> i32 {
     let mut input = input;
     input.reverse();
