@@ -7,16 +7,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     let input = fs::read_to_string("./src/input.txt")?;
     println!("part 1: {}", amplify(&input.trim()));
 
+    // Part 2.
     assert_eq!(35993240, feedback_loop(&input.trim()));
 
     Ok(())
 }
 
-fn amplify(input: &str) -> i32 {
-    let mut max: i32 = i32::MIN;
+fn amplify(input: &str) -> i128 {
+    let mut max: i128 = i128::MIN;
 
     for phases in (0..=4).permutations(5) {
-        let mut i: i32 = 0;
+        let mut i: i128 = 0;
         for phase in phases {
             i = program(input, vec![phase, i]);
         }
@@ -28,11 +29,11 @@ fn amplify(input: &str) -> i32 {
     max
 }
 
-fn feedback_loop(input: &str) -> i32 {
-    let mut max: i32 = i32::MIN;
+fn feedback_loop(input: &str) -> i128 {
+    let mut max: i128 = i128::MIN;
 
     for phases in (5..=9).permutations(5) {
-        let mut out: i32 = 0;
+        let mut out: i128 = 0;
         let mut programs: Vec<Intcode> = vec![
             Intcode::new(input, vec![phases[0], 0]),
             Intcode::new(input, vec![phases[1]]),
