@@ -16,23 +16,22 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 //https://www.reddit.com/r/adventofcode/comments/e8m1z3/2019_day_10_solutions/
-//// Calculates the angle relative to 12 o'clock as 0 degree, 3 o'clock as 90 degree etc.
-//// Since HashSet does not accept f64, this has to be returned as BigRational.
+// Since HashSet does not accept f64, this has to be returned as BigRational.
+// In order to sort them from top, clockwise, the angle at 12 o'clock should be 0.
+// For visualization, going up is -tive y and 0 degree, going down +tive y is 180degree.
+// Going right is +tive x and 90 degree, going left is -tive x and 270 degree.
 fn angle_to(a: &(i32, i32), b: &(i32, i32)) -> Option<BigRational> {
     let y: f64 = (b.1 - a.1).into();
     let x: f64 = (b.0 - a.0).into();
-    //let deg = x.atan2(y) / PI * 180_f64;
-    //let deg = if deg < 0_f64 { deg + 360_f64 } else { deg };
-    //Ratio::from_float((deg + 180_f64) % (360_f64))
 
-    let mut deg = (-y.atan2(x) * 180_f64) / PI;
-    if deg <= 90_f64 && deg >= 0_f64 {
-        deg = (deg - 90_f64).abs();
+    let deg = -y.atan2(x) * 180_f64 / PI;
+    let deg = if deg <= 90_f64 && deg >= 0_f64 {
+        (deg - 90_f64).abs()
     } else if deg < 0_f64 {
-        deg = deg.abs() + 90_f64;
+        deg.abs() + 90_f64
     } else {
-        deg = 450_f64 - deg;
-    }
+        450_f64 - deg
+    };
 
     Ratio::from_float(deg)
 }
@@ -124,7 +123,7 @@ fn asteroid_count(input: &str) -> ((i32, i32), usize) {
 mod tests {
     use super::*;
 
-    //#[test]
+    #[test]
     fn part1() {
         let input = ".#..#
 .....
@@ -221,14 +220,14 @@ mod tests {
 
     #[test]
     fn test_angle() {
-        assert_eq!(Ratio::from_float(0_f64), angle_to(&(0, 0), &(0, 1)));
-        assert_eq!(Ratio::from_float(45_f64), angle_to(&(0, 0), &(1, 1)));
+        assert_eq!(Ratio::from_float(180_f64), angle_to(&(0, 0), &(0, 1)));
+        assert_eq!(Ratio::from_float(135_f64), angle_to(&(0, 0), &(1, 1)));
         assert_eq!(Ratio::from_float(90_f64), angle_to(&(0, 0), &(1, 0)));
-        assert_eq!(Ratio::from_float(180_f64), angle_to(&(0, 0), &(0, -1)));
-        assert_eq!(Ratio::from_float(225_f64), angle_to(&(0, 0), &(-1, -1)));
+        assert_eq!(Ratio::from_float(0_f64), angle_to(&(0, 0), &(0, -1)));
+        assert_eq!(Ratio::from_float(315_f64), angle_to(&(0, 0), &(-1, -1)));
         assert_eq!(Ratio::from_float(270_f64), angle_to(&(0, 0), &(-1, 0)));
 
-        assert_eq!(Ratio::from_float(180_f64), angle_to(&(11, 13), &(11, 12)));
-        assert_eq!(Ratio::from_float(0_f64), angle_to(&(11, 13), &(11, 14)));
+        assert_eq!(Ratio::from_float(0_f64), angle_to(&(11, 13), &(11, 12)));
+        assert_eq!(Ratio::from_float(180_f64), angle_to(&(11, 13), &(11, 14)));
     }
 }
