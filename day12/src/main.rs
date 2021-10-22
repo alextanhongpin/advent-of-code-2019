@@ -10,118 +10,107 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn total_energy(input: &str, steps: i32) -> i32 {
-    let mut moons = Moon::from(input.to_string());
+    let mut moons = parse(input);
     for _ in 0..steps {
-        for j in 0..4 {
-            moons.apply_gravity(j);
+        let others = moons.clone();
+        for (i, moon) in moons.iter_mut().enumerate() {
+            let new_velocity = others
+                .iter()
+                .enumerate()
+                .filter(|&(j, _)| i != j)
+                .map(|(_, &other)| moon.cmp(other))
+                .fold(moon.velocity, |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2));
+            moon.update_velocity(new_velocity);
         }
-        for j in 0..4 {
-            moons.apply_velocity(j);
+
+        for moon in moons.iter_mut() {
+            moon.update_position();
         }
     }
 
-    let total_energy = (0..4).map(|n| moons.total_energy(n)).fold(0, |a, b| a + b);
+    let total_energy = moons
+        .iter()
+        .map(|moon| moon.total_energy())
+        .fold(0, |a, b| a + b);
     total_energy
 }
-#[derive(Debug, Clone, Copy)]
-struct Position {
-    x: i32,
-    y: i32,
-    z: i32,
-}
 
-impl Position {
-    fn energy(self) -> i32 {
-        self.x.abs() + self.y.abs() + self.z.abs()
-    }
-}
-
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 struct Moon {
-    positions: Vec<Position>,
-    velocities: Vec<Position>,
+    position: (i32, i32, i32),
+    velocity: (i32, i32, i32),
 }
 
-fn parse_row(input: &str) -> Position {
+fn parse_row(input: &str) -> Moon {
     let re = Regex::new(r"<x=(-?\d+),\s*y=(-?\d+),\s*z=(-?\d+)\s*>").unwrap();
     let cap = re.captures(input).unwrap();
-    Position {
-        x: cap[1].parse::<i32>().unwrap(),
-        y: cap[2].parse::<i32>().unwrap(),
-        z: cap[3].parse::<i32>().unwrap(),
-    }
+    Moon::new((
+        cap[1].parse::<i32>().unwrap(),
+        cap[2].parse::<i32>().unwrap(),
+        cap[3].parse::<i32>().unwrap(),
+    ))
 }
 
-fn parse(input: &str) -> Vec<Position> {
+fn parse(input: &str) -> Vec<Moon> {
     let input = input.trim();
     input
         .split('\n')
         .map(|row| parse_row(row))
-        .collect::<Vec<Position>>()
-}
-
-impl From<String> for Moon {
-    fn from(input: String) -> Moon {
-        Moon::new(parse(&input))
-    }
+        .collect::<Vec<Moon>>()
 }
 
 impl Moon {
-    fn new(positions: Vec<Position>) -> Self {
-        let len = positions.len();
+    fn new(position: (i32, i32, i32)) -> Self {
         Moon {
-            positions: positions,
-            velocities: vec![Position { x: 0, y: 0, z: 0 }; len],
+            position: position,
+            velocity: (0, 0, 0),
         }
     }
 
-    fn apply_gravity(&mut self, moon: usize) {
-        let curr_pos = self.positions[moon];
-        let mut vel = self.velocities[moon];
-        for (i, pos) in self.positions.iter().enumerate() {
-            if i == moon {
-                continue;
-            }
-            match curr_pos.x.cmp(&pos.x) {
-                Ordering::Less => vel.x += 1,
-                Ordering::Greater => vel.x -= 1,
-                Ordering::Equal => {}
-            }
-
-            match curr_pos.y.cmp(&pos.y) {
-                Ordering::Less => vel.y += 1,
-                Ordering::Greater => vel.y -= 1,
-                Ordering::Equal => {}
-            }
-
-            match curr_pos.z.cmp(&pos.z) {
-                Ordering::Less => vel.z += 1,
-                Ordering::Greater => vel.z -= 1,
-                Ordering::Equal => {}
-            }
+    fn cmp_pos(self, field: char, other: Moon) -> i32 {
+        let (left, right) = match field {
+            'x' => (self.position.0, other.position.0),
+            'y' => (self.position.1, other.position.1),
+            'z' => (self.position.2, other.position.2),
+            _ => unimplemented!(),
+        };
+        match left.cmp(&right) {
+            Ordering::Less => 1,
+            Ordering::Greater => -1,
+            Ordering::Equal => 0,
         }
-        self.velocities[moon] = vel;
     }
 
-    fn apply_velocity(&mut self, moon: usize) {
-        let mut pos = self.positions[moon];
-        let vel = self.velocities[moon];
-        pos.x += vel.x;
-        pos.y += vel.y;
-        pos.z += vel.z;
-        self.positions[moon] = pos;
+    fn cmp(self, other: Moon) -> (i32, i32, i32) {
+        (
+            self.cmp_pos('x', other),
+            self.cmp_pos('y', other),
+            self.cmp_pos('z', other),
+        )
     }
 
-    fn potential_energy(&self, moon: usize) -> i32 {
-        self.positions[moon].energy()
+    fn update_velocity(&mut self, velocity: (i32, i32, i32)) {
+        self.velocity = velocity
     }
 
-    fn kinetic_energy(&self, moon: usize) -> i32 {
-        self.velocities[moon].energy()
+    fn update_position(&mut self) {
+        self.position = (
+            self.position.0 + self.velocity.0,
+            self.position.1 + self.velocity.1,
+            self.position.2 + self.velocity.2,
+        )
     }
 
-    fn total_energy(&self, moon: usize) -> i32 {
-        self.potential_energy(moon) * self.kinetic_energy(moon)
+    fn potential_energy(self) -> i32 {
+        self.position.0.abs() + self.position.1.abs() + self.position.2.abs()
+    }
+
+    fn kinetic_energy(self) -> i32 {
+        self.velocity.0.abs() + self.velocity.1.abs() + self.velocity.2.abs()
+    }
+
+    fn total_energy(self) -> i32 {
+        self.potential_energy() * self.kinetic_energy()
     }
 }
 
