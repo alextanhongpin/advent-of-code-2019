@@ -3,102 +3,108 @@ use std::collections::HashMap;
 
 fn main() {}
 
-fn nanofactory(input: &str) -> i32 {
+fn parse(input: &str) -> HashMap<String, HashMap<String, i32>> {
     let re = Regex::new(r"(\d+)\s(\w+)").unwrap();
-    let chemicals = input
+    let reactions = input
         .split('\n')
         .map(|row| {
-            let mut chemicals = re
+            let mut reactions = re
                 .captures_iter(row)
                 .map(|cap| {
-                    let name = &cap[2];
-                    let name = name.to_string();
-                    let quantity = &cap[1];
-                    let quantity = quantity.parse::<i32>().unwrap();
-
-                    (name, quantity)
+                    let (name, quantity) = (&cap[2], &cap[1]);
+                    (name.to_string(), quantity.parse::<i32>().unwrap())
                 })
                 .collect::<Vec<(String, i32)>>();
 
-            let mut output = chemicals.pop().unwrap();
+            let mut output = reactions.pop().unwrap();
             output.1 = -1 * output.1;
-            chemicals.push(output.clone());
+            reactions.push(output.clone());
 
-            (output.0, chemicals.into_iter().collect())
+            (output.0, reactions.into_iter().collect())
         })
         .collect::<Vec<(String, HashMap<String, i32>)>>();
 
-    let chemicals: HashMap<String, HashMap<String, i32>> = chemicals.into_iter().collect();
+    reactions.into_iter().collect()
+}
 
-    let mut fuel = chemicals.get("FUEL").unwrap().to_owned();
-    fuel.remove("FUEL");
-    println!("CHEMICALS: {:?}", chemicals);
-    println!("INITIAL: {:?}", fuel);
+fn nanofactory(input: &str) -> i32 {
+    let reactions = parse(input);
+    let mut have: HashMap<String, i32> = HashMap::new();
+    let mut want: HashMap<String, i32> = HashMap::new();
+    want.insert("FUEL".into(), 1);
+
     let mut iter = 0;
 
     loop {
-        for name in fuel.clone().keys() {
-            if name == "ORE" {
+        // 1 FUEL = 7 A + 1 E
+        for key in want.clone().keys() {
+            if key == "ORE" {
                 continue;
             }
-            let mut equation = chemicals[name].clone();
-            if equation.contains_key("ORE") {
+            let want_qty = want[key];
+            let chem_qty = reactions[key][key].abs();
+
+            if want_qty >= chem_qty {
+                want.remove(key);
+                let mut chem_reaction = reactions[key].clone();
+                chem_reaction.remove(key);
+
+                for (chem_name, chem_qty) in chem_reaction {
+                    if chem_name == "ORE" {
+                        continue;
+                    }
+                    let chem = want.entry(chem_name).or_insert(0);
+                    *chem += chem_qty * want_qty;
+                }
+            } else {
+                println!("key: {}, want: {}, chem: {}", key, want_qty, chem_qty);
+                //println!("key: {}, have: {:?}, want: {:?}", key, have, want);
+                //println!("eq: {:?}", reactions[key]);
+            }
+        }
+
+        for key in want.clone().keys() {
+            if key == "ORE" {
                 continue;
+            }
+            if !reactions[key].contains_key("ORE") {
+                continue;
+            }
+            let have_qty = have.get(key).unwrap_or(&0);
+            let want_qty = want[key];
+
+            if *have_qty < want_qty {
+                let prod_qty = reactions[key][key].abs();
+                let ratio = (want_qty as f32 / prod_qty as f32).ceil() as i32;
+                let ore_qty = reactions[key]["ORE"];
+
+                let have_entry = have.entry(key.clone()).or_insert(0);
+                *have_entry += prod_qty * ratio;
+
+                let want_entry = want.entry("ORE".clone().to_string()).or_insert(0);
+                *want_entry += ore_qty * ratio;
             }
 
-            let min_quantity = equation.remove(name).unwrap().abs();
-            let quantity = fuel[name];
-            if quantity < min_quantity || quantity % min_quantity != 0 {
-                println!(
-                    "mismatch quantity for {}, want min {}, got {}",
-                    name, min_quantity, quantity
-                );
-                continue;
+            let want_entry = want.entry(key.to_string()).or_insert(0);
+            *want_entry -= want_qty;
+            if *want_entry == 0 {
+                want.remove(key);
             }
 
-            for (chem_name, chem_quantity) in equation {
-                let curr_chem = fuel.entry(chem_name).or_insert(0);
-                *curr_chem += (chem_quantity / min_quantity) * quantity;
-            }
-            fuel.remove(name);
+            let have_entry = have.entry(key.clone()).or_insert(0);
+            *have_entry -= want_qty;
+        }
+
+        if want.keys().len() == 1 && want.contains_key("ORE") {
+            break;
         }
         iter += 1;
-        if iter > 5000 {
-            println!("FORCE BREAK: {:?}", fuel);
+        if iter > 10 {
             break;
-        }
-
-        if fuel.keys().len() == 1 && fuel.contains_key("ORE") {
-            break;
-        }
-
-        let valid = fuel
-            .clone()
-            .keys()
-            .filter(|&name| name != "ORE")
-            .all(|name| chemicals[name].contains_key("ORE"));
-        if !valid {
-            continue;
-        }
-
-        for inp in fuel.clone().keys() {
-            match inp.as_ref() {
-                "ORE" => {}
-                name => {
-                    let curr_quantity = fuel[inp] as f32;
-                    let min_quantity = chemicals[name][name].abs() as f32;
-                    let ore_quantity = chemicals[name]["ORE"] as f32;
-                    let quantity_to_add =
-                        ((curr_quantity / min_quantity).ceil() * ore_quantity) as i32;
-                    let fuel_ore = fuel.entry("ORE".into()).or_insert(0);
-                    *fuel_ore += quantity_to_add;
-                    fuel.remove(name);
-                }
-            }
         }
     }
 
-    fuel["ORE"]
+    want["ORE"]
 }
 
 #[cfg(test)]
@@ -114,8 +120,8 @@ mod tests {
 7 A, 1 D => 1 E
 7 A, 1 E => 1 FUEL";
 
-        let fuel = nanofactory(&input);
-        assert_eq!(31, fuel);
+        let want = nanofactory(&input);
+        assert_eq!(31, want);
 
         let input = "9 ORE => 2 A
         8 ORE => 3 B
@@ -125,8 +131,8 @@ mod tests {
         4 C, 1 A => 1 CA
         2 AB, 3 BC, 4 CA => 1 FUEL";
 
-        let fuel = nanofactory(&input);
-        assert_eq!(165, fuel);
+        let want = nanofactory(&input);
+        assert_eq!(165, want);
 
         let input = "157 ORE => 5 NZVS
 165 ORE => 6 DCFZ
@@ -138,8 +144,8 @@ mod tests {
 165 ORE => 2 GPVTF
 3 DCFZ, 7 NZVS, 5 HKGWZ, 10 PSHF => 8 KHKGT";
 
-        let fuel = nanofactory(&input);
-        assert_eq!(13312, fuel);
+        let want = nanofactory(&input);
+        assert_eq!(13312, want);
 
         let input = "2 VPVL, 7 FWMGM, 2 CXFTF, 11 MNCFX => 1 STKFG
 17 NVRVD, 3 JNWZP => 8 VPVL
@@ -154,8 +160,8 @@ mod tests {
 1 VJHF, 6 MNCFX => 4 RFSQX
 176 ORE => 6 VJHF";
 
-        let fuel = nanofactory(&input);
-        assert_eq!(180697, fuel);
+        let want = nanofactory(&input);
+        assert_eq!(180697, want);
 
         let input = "171 ORE => 8 CNZTR
 7 ZLQW, 3 BMBT, 9 XCVML, 26 XMNCP, 1 WPTQ, 2 MZWV, 1 RJRHP => 4 PLWSL
@@ -175,7 +181,7 @@ mod tests {
 7 XCVML => 6 RJRHP
 5 BHXH, 4 VRPVC => 5 LTCX";
 
-        let fuel = nanofactory(&input);
-        assert_eq!(2210736, fuel);
+        let want = nanofactory(&input);
+        assert_eq!(2210736, want);
     }
 }
