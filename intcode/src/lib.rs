@@ -6,11 +6,11 @@ use operation::Operation;
 use parameter_mode::ParameterMode;
 pub use signal::Signal;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Intcode {
     base: i128,
-    input: Vec<i128>,
-    ip: usize,
+    pub input: Vec<i128>,
+    pub ip: usize,
     pub codes: Vec<i128>,
     pub output: Vec<i128>,
 }
