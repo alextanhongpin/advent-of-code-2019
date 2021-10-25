@@ -6,8 +6,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     let input = fs::read_to_string("./src/input.txt")?;
     let input = input.trim();
 
-    let steps = find_shortest_path(&input);
+    let drone = Intcode::from(input.to_string());
+
+    let (steps, drone) = find_shortest_path(drone);
     assert_eq!(226, steps);
+
+    let (steps, _) = find_shortest_path(drone);
+    assert_eq!(343, steps);
 
     Ok(())
 }
@@ -22,16 +27,13 @@ fn backtrack(i: i32) -> i32 {
     }
 }
 
-fn find_shortest_path(input: &str) -> i32 {
+fn find_shortest_path(drone: Intcode) -> (i32, Intcode) {
     let mut depth = 0;
 
-    let program = Intcode::from(input.to_string());
     // Do a breadth-first search by deploying the drones to all possible directions.
-    let mut drones: Vec<(i32, Intcode)> = vec![(-1, program)];
+    let mut drones: Vec<(i32, Intcode)> = vec![(-1, drone.clone())];
 
-    'outer: loop {
-        depth += 1;
-
+    loop {
         // Take drones for the current batch.
         let programs = drones.clone();
         drones.clear();
@@ -56,10 +58,7 @@ fn find_shortest_path(input: &str) -> i32 {
                                 //println!("can move");
                                 drones.push((i as i32, program));
                             }
-                            2 => {
-                                //println!("found box");
-                                break 'outer;
-                            }
+                            2 => return (depth + 1, program),
                             _ => unimplemented!(),
                         }
                     }
@@ -67,6 +66,12 @@ fn find_shortest_path(input: &str) -> i32 {
                 }
             }
         }
+
+        depth += 1;
+        // Part 2 is easier. Start from the oxygen tank, and keep walking until there are no more
+        // paths.
+        if drones.len() == 0 {
+            return (depth, drone);
+        }
     }
-    depth
 }
