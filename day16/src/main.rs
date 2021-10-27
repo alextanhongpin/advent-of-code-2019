@@ -12,7 +12,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut result = handle_real_signal(num_vector(&input), pattern.clone(), 100);
     result.truncate(8);
-    assert_eq!(vec![1, 0, 3, 3, 2, 4, 4, 7], result);
+    assert_eq!(vec![1, 4, 2, 8, 8, 0, 2, 5], result);
 
     Ok(())
 }
@@ -35,9 +35,9 @@ fn num_vector(input: &str) -> Vec<i32> {
 
 fn handle_real_signal(input: Vec<i32>, pattern: Vec<i32>, num_phases: i32) -> Vec<i32> {
     let offset = vector_num(input.clone().into_iter().take(7).collect::<Vec<i32>>());
-    let mut output = input.repeat(10000);
+    let mut output = input.repeat(10_000);
     for _ in 0..num_phases {
-        output = flawed_frequency_transmission(output, pattern.clone());
+        output = flawed_frequency_transmission(output, pattern.clone(), offset as usize);
     }
 
     output
@@ -51,28 +51,49 @@ fn handle_real_signal(input: Vec<i32>, pattern: Vec<i32>, num_phases: i32) -> Ve
 fn run_in_phase(input: Vec<i32>, pattern: Vec<i32>, num_phases: i32) -> Vec<i32> {
     let mut output = input;
     for _ in 0..num_phases {
-        output = flawed_frequency_transmission(output, pattern.clone());
+        output = flawed_frequency_transmission(output, pattern.clone(), 0);
     }
     output
 }
 
-fn flawed_frequency_transmission(input: Vec<i32>, pattern: Vec<i32>) -> Vec<i32> {
-    (1..=input.len())
-        .map(|i| {
-            let total = input
-                .iter()
-                .zip(repeat(&pattern, i).iter().cycle().skip(1))
-                .skip(i - 1)
-                .map(|(a, b)| a * b)
-                .sum::<i32>();
+fn flawed_frequency_transmission(input: Vec<i32>, pattern: Vec<i32>, offset: usize) -> Vec<i32> {
+    let mut result: Vec<i32> = vec![0; input.len()];
+    let mid = input.len() / 2;
 
-            total.abs() % 10
-        })
-        .collect()
-}
+    if offset > mid {
+        let total = input[offset - 1..].iter().sum::<i32>();
+        result[offset - 1] = total;
+    }
 
-fn repeat(input: &Vec<i32>, i: usize) -> Vec<i32> {
-    input.iter().flat_map(|&n| vec![n; i]).collect()
+    for i in offset..input.len() {
+        let mut total = 0;
+        if i < mid {
+            let mut p = 0;
+            let mut j = 0;
+
+            loop {
+                let patt = pattern[p % pattern.len()];
+                let repeat = if p == 0 { i } else { i + 1 };
+                let min = j;
+                let max = (j + repeat).min(input.len());
+                if patt != 0 {
+                    total += patt * input[min..max].iter().sum::<i32>();
+                }
+                if max == input.len() {
+                    break;
+                }
+                j = max;
+                p += 1;
+            }
+            result[i] = total;
+        } else if i == mid {
+            result[i] = input[mid..].iter().sum::<i32>();
+        } else {
+            result[i] = result[i - 1] - input[i - 1];
+        }
+    }
+
+    result.iter().map(|n| n.abs() % 10).collect()
 }
 
 #[cfg(test)]
