@@ -1,7 +1,11 @@
 use intcode::Intcode;
+use regex::Regex;
 use std::collections::HashMap;
 use std::error::Error;
 use std::{fmt, fs};
+
+mod grid;
+use grid::*;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 enum Direction {
@@ -9,6 +13,15 @@ enum Direction {
     DOWN(usize),
     LEFT(usize),
     RIGHT(usize),
+}
+
+impl Direction {
+    fn steps(self) -> usize {
+        use Direction::*;
+        match self {
+            UP(n) | DOWN(n) | LEFT(n) | RIGHT(n) => n,
+        }
+    }
 }
 
 // Prints UP(10) to U10.
@@ -36,7 +49,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn part2(input: &str) -> i32 {
-    let pixels = ascii(&input);
+    let mut program = Intcode::from(input.to_string());
+    let output = program.run_until_halt();
+    let pixels = ascii(output.clone());
+    draw_map(output.clone());
 
     let start = pixels
         .iter()
@@ -47,6 +63,7 @@ fn part2(input: &str) -> i32 {
 
     use Direction::*;
     let mut direction = UP(0);
+    let mut prev_direction = direction;
 
     // Keep track of the path travelled.
     let mut steps: Vec<Direction> = vec![];
@@ -58,6 +75,7 @@ fn part2(input: &str) -> i32 {
             LEFT(n) => vec![LEFT(n + 1), DOWN(0), UP(0)],
             RIGHT(n) => vec![RIGHT(n + 1), UP(0), DOWN(0)],
         };
+        // Check if the robot can move forward.
 
         for mv in moves {
             let new_pos = match mv {
@@ -69,25 +87,36 @@ fn part2(input: &str) -> i32 {
             };
 
             if pixels.get(&new_pos) == Some(&"#".to_string()) {
-                pos = new_pos;
-                // Compare enum by variant, not values.
+                // If the direction changes, just change direction without moving.
                 if std::mem::discriminant(&direction) != std::mem::discriminant(&mv) {
-                    match (direction, mv) {
-                        (UP(n), RIGHT(_)) => {
-                            if n > 0 {
-                                steps.push(RIGHT(n))
-                            }
-                        }
-                        (UP(n), LEFT(_)) => steps.push(LEFT(n)),
-                        (RIGHT(n), DOWN(_)) => steps.push(RIGHT(n)),
-                        (RIGHT(n), UP(_)) => steps.push(LEFT(n)),
-                        (DOWN(n), LEFT(_)) => steps.push(RIGHT(n)),
-                        (DOWN(n), RIGHT(_)) => steps.push(LEFT(n)),
-                        (LEFT(n), DOWN(_)) => steps.push(LEFT(n)),
-                        (LEFT(n), UP(_)) => steps.push(RIGHT(n)),
-                        _ => unimplemented!(),
+                    //println!("moved: {:?}, direction: {:?}, mv: {:?}", pos, direction, mv);
+                    let n = direction.steps();
+                    if n != 0 {
+                        steps.push(match (prev_direction, direction) {
+                            (UP(_), RIGHT(_)) => RIGHT(n),
+                            (UP(_), LEFT(_)) => LEFT(n),
+                            (RIGHT(_), DOWN(_)) => RIGHT(n),
+                            (RIGHT(_), UP(_)) => LEFT(n),
+                            (DOWN(_), LEFT(_)) => RIGHT(n),
+                            (DOWN(_), RIGHT(_)) => LEFT(n),
+                            (LEFT(_), DOWN(_)) => LEFT(n),
+                            (LEFT(_), UP(_)) => RIGHT(n),
+                            _ => unimplemented!(),
+                        });
                     }
-                };
+                    //println!(
+                    //"steps: {:?}\n",
+                    //steps
+                    //.iter()
+                    //.map(ToString::to_string)
+                    //.collect::<Vec<String>>()
+                    //.join(",")
+                    //);
+                    prev_direction = direction;
+                    direction = mv;
+                    continue 'walk;
+                }
+                pos = new_pos;
                 direction = mv;
                 continue 'walk;
             }
@@ -111,28 +140,39 @@ fn part2(input: &str) -> i32 {
             .chars()
             .map(|c| c.to_string())
             .collect::<Vec<String>>()
-            .join(",")
-            + "\n";
-        let main_routine = to_ascii(&path);
+            .join(",");
+        let main_routine = to_ascii(&(path.clone() + "\n"));
+        let function_a = to_routine(&mapping["A"]);
+        let function_b = to_routine(&mapping["B"]);
+        let function_c = to_routine(&(mapping["C"]));
+        let camera_feed = to_ascii("n\n");
 
-        let function_a = to_ascii(&(mapping["A"].to_owned() + "\n"));
-        let function_b = to_ascii(&(mapping["B"].to_owned() + "\n"));
-        let function_c = to_ascii(&(mapping["C"].to_owned() + "\n"));
-        let camera_feed = to_ascii("y\n");
-        let mut input: Vec<usize> = main_routine;
+        let mut input: Vec<i128> = vec![];
+        input.extend(
+            main_routine
+                .iter()
+                .map(|&n| n as i128)
+                .collect::<Vec<i128>>(),
+        );
         input.extend(function_a);
         input.extend(function_b);
         input.extend(function_c);
-        input.extend(camera_feed);
+        input.extend(
+            camera_feed
+                .iter()
+                .map(|&n| n as i128)
+                .collect::<Vec<i128>>(),
+        );
 
-        let mut program = Intcode::new(&start.trim(), input.iter().map(|&n| n as i128).collect());
+        let mut program = Intcode::new(&start.trim(), input);
         let output = program.run_until_halt();
+        //draw_map(output.clone());
         println!(
             "a: {:?}, b: {:?}, c: {:?}",
             mapping["A"], mapping["B"], mapping["C"]
         );
         println!(
-            "input: {:?}, output: {:?}, x: {:?}",
+            "input: {:?}, output: {:?}, x: {:?}\n",
             path,
             output.iter().max(),
             output.iter().find(|&n| n == &('X' as i128))
@@ -146,8 +186,30 @@ fn to_ascii(input: &str) -> Vec<usize> {
     input.chars().map(|c| c as usize).collect::<Vec<usize>>()
 }
 
+fn to_routine(input: &str) -> Vec<i128> {
+    let re = Regex::new(r"([R|L])(\d+)").unwrap();
+    let mut out = re
+        .captures_iter(input)
+        .flat_map(|cap| {
+            vec![
+                cap[1].to_owned(),
+                ",".to_string(),
+                cap[2].to_owned(),
+                ",".to_string(),
+            ]
+        })
+        .flat_map(|s| s.chars().collect::<Vec<char>>())
+        .map(|c| c as i128)
+        .collect::<Vec<i128>>();
+    out.pop();
+    out.push('\n' as i128);
+    out
+}
+
 fn sum_of_alignment_parameters(input: &str) -> usize {
-    let pixels = ascii(input);
+    let mut program = Intcode::from(input.to_string());
+    let output = program.run_until_halt();
+    let pixels = ascii(output);
 
     pixels
         .clone()
@@ -161,36 +223,6 @@ fn sum_of_alignment_parameters(input: &str) -> usize {
         })
         .map(|(pos, _)| pos.0 * pos.1)
         .sum::<usize>()
-}
-
-fn ascii(input: &str) -> HashMap<(usize, usize), String> {
-    let mut program = Intcode::from(input.trim().to_string());
-    let pixels = program.run_until_halt();
-
-    let mut result: HashMap<(usize, usize), String> = HashMap::new();
-    let mut pos: (usize, usize) = (0, 0);
-    for px in pixels {
-        match px {
-            35 => {
-                result.insert(pos, "#".to_string());
-            }
-            46 => {
-                result.insert(pos, ".".to_string());
-            }
-            10 => {
-                pos.0 = 0;
-                pos.1 += 1;
-                continue;
-            }
-            94 => {
-                result.insert(pos, "^".to_string());
-            }
-            i => unimplemented!("px: {}", i),
-        }
-        pos.0 += 1;
-    }
-
-    result
 }
 
 fn compress_path(steps: Vec<Direction>) -> Vec<(HashMap<String, String>, String)> {
@@ -217,6 +249,9 @@ fn compress_path(steps: Vec<Direction>) -> Vec<(HashMap<String, String>, String)
         abs.sort();
 
         for j in 1..=10 {
+            if i + j > n {
+                continue;
+            }
             let a = &steps[n - i - j..n - i]
                 .iter()
                 .map(ToString::to_string)
@@ -226,7 +261,8 @@ fn compress_path(steps: Vec<Direction>) -> Vec<(HashMap<String, String>, String)
             let mut dedup: HashMap<String, String> = HashMap::new();
             dedup.insert(c.to_string(), "C".to_string());
 
-            if path.starts_with(a) {
+            let is_a: bool = path.starts_with(a);
+            if is_a {
                 dedup.insert(a.to_string(), "A".to_string());
             } else {
                 dedup.insert(a.to_string(), "B".to_string());
@@ -240,7 +276,7 @@ fn compress_path(steps: Vec<Direction>) -> Vec<(HashMap<String, String>, String)
                     continue;
                 };
                 let b = sub[0];
-                if path.starts_with(b) {
+                if !is_a {
                     dedup.insert(b.to_string(), "A".to_string());
                 } else {
                     dedup.insert(b.to_string(), "B".to_string());
@@ -260,6 +296,11 @@ fn compress_path(steps: Vec<Direction>) -> Vec<(HashMap<String, String>, String)
             }
             if path.len() > 10 {
                 continue;
+            }
+            if dedup.len() == 5 {
+                for (k, v) in dedup.iter() {
+                    println!("k: {:?} {:?}", k, v);
+                }
             }
 
             result.push((dedup, path));
@@ -285,6 +326,6 @@ mod tests {
         assert_eq!(vec![82, 44, 52, 44, 82, 44, 52, 44, 82, 44, 56, 10], result);
 
         let result = to_ascii("L,6,L,2\n");
-        assert_eq!(vec![76, 44, 54, 44, 76, 44, 50, 10], result);
+        assert_eq!(vec![76, 44, 54, 44, 76, 44, 50, 10, 1], result);
     }
 }

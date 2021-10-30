@@ -44,6 +44,10 @@ impl Intcode {
         self.input.insert(0, input);
     }
 
+    pub fn with_input(&mut self, input: Vec<i128>) {
+        self.input = input;
+    }
+
     fn get_parameter(&mut self, pos: usize, rw: char) -> i128 {
         let n = self.read(self.ip + pos);
         let mode = get_mode(self.codes[self.ip], pos);
