@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 fn main() {}
 
@@ -91,7 +91,7 @@ fn draw(world: HashMap<Position, Tile>) {
         let x = pos.x as usize;
         let y = pos.y as usize;
         coordinates[y][x] = match tile {
-            Player => "P".to_string(),
+            Player => "@".to_string(),
             Empty => ".".to_string(),
             Wall => "#".to_string(),
             Key(c) => c.to_string(),
@@ -105,130 +105,199 @@ fn draw(world: HashMap<Position, Tile>) {
     println!("");
 }
 
-fn walk(
-    world: HashMap<Position, Tile>,
-    keys: usize,
-    direction: Direction,
-    position: Position,
-) -> Option<usize> {
-    use Direction::*;
-    use Tile::*;
-    let mut world = world;
-    if vec![Up, Down, Left, Right]
-        .into_iter()
-        .filter(|dir| dir != &direction)
-        .all(|dir| {
-            world.get(
-                &position
-                    .move_forward(&direction.opposite())
-                    .move_forward(&dir),
-            ) == Some(&Wall)
-        })
-    {
-        world.insert(position.move_forward(&direction.opposite()), Wall);
-    }
-
-    let position = position.move_forward(&direction);
-
-    match world.get(&position) {
-        Some(Empty) => {
-            match vec![Up, Down, Left, Right]
-                .into_iter()
-                .filter(|&dir| dir != direction.opposite())
-                .flat_map(|direction| walk(world.clone(), keys, direction, position))
-                .min()
-            {
-                Some(steps) => Some(steps + 1),
-                None => None,
-            }
-        }
-        Some(Key(c)) => {
-            if keys == 1 {
-                // We have the last key.
-                return Some(1);
-            }
-            let mut world = world.clone();
-            // Remove the key.
-            world.remove(&position);
-            world.insert(
-                position,
-                match world.get(&position.move_forward(&direction)) {
-                    Some(Wall) => Wall,
-                    _ => Empty,
-                },
-            );
-
-            println!(
-                "keys: {}, key: {:?}, door: {:?}",
-                keys,
-                c,
-                c.to_uppercase()
-                    .collect::<Vec<char>>()
-                    .first()
-                    .unwrap()
-                    .to_owned()
-            );
-
-            // Remove the door if exists.
-            match world.iter().find(|&(_, v)| {
-                v == &Door(
-                    c.to_uppercase()
-                        .collect::<Vec<char>>()
-                        .first()
-                        .unwrap()
-                        .to_owned(),
-                )
-            }) {
-                Some((&pos, _)) => {
-                    world.remove(&pos);
-                    world.insert(pos, Empty);
-                }
-                _ => {}
-            }
-
-            draw(world.clone());
-
-            let steps = vec![Up, Down, Left, Right]
-                .into_iter()
-                .flat_map(|direction| walk(world.clone(), keys - 1, direction, position))
-                .min()
-                .unwrap();
-            Some(steps + 1)
-        }
-        Some(Wall) | Some(Door(_)) => None,
-        s => panic!("unknown step: {:?} {:?}", s, position),
-    }
-}
-
-fn solve(world: HashMap<Position, Tile>) -> usize {
-    let mut world = world;
-    // Find the start position.
+fn find_paths(world: HashMap<Position, Tile>) -> Vec<Vec<char>> {
     let start = world
         .clone()
         .into_iter()
         .find(|(_, v)| v == &Tile::Player)
         .unwrap()
         .0;
-    world.remove(&start);
-    world.insert(start, Tile::Empty);
 
-    println!("start: {:?}", start);
-    let keys = world
-        .iter()
-        .map(|(_, v)| match v {
-            Tile::Key(_) => 1,
-            _ => 0,
-        })
-        .sum();
+    let mut paths: Vec<(Position, Direction, Vec<char>)> = vec![
+        (start.clone(), Up, vec![]),
+        (start.clone(), Down, vec![]),
+        (start.clone(), Left, vec![]),
+        (start.clone(), Right, vec![]),
+    ];
 
     use Direction::*;
+    use Tile::*;
+    let mut subpaths: Vec<Vec<char>> = vec![];
+    let mut visited: HashSet<Position> = HashSet::new();
+
+    while paths.len() > 0 {
+        let head = paths.remove(0);
+        let pos = head.0;
+        let dir = head.1;
+        let mut path = head.2;
+
+        if visited.contains(&pos) {
+            println!("visited: {:?}", pos);
+            continue;
+        }
+
+        // Check if it's junction.
+        if vec![Up, Down, Left, Right]
+            .into_iter()
+            .flat_map(|dir| world.get(&pos.move_forward(&dir)))
+            .filter(|&tile| tile == &Tile::Wall)
+            .count()
+            == 3
+            && pos != start
+        {
+            visited.insert(pos);
+            subpaths.push(path);
+            continue;
+        }
+
+        let new_pos = pos.move_forward(&dir);
+        let keep_walking = match world.get(&new_pos) {
+            Some(&Key(c)) | Some(&Door(c)) => {
+                path.push(c);
+                true
+            }
+            Some(Empty) => true,
+            _ => false,
+        };
+        if keep_walking {
+            vec![Up, Down, Left, Right]
+                .into_iter()
+                .filter(|&direction| direction != dir.opposite())
+                .for_each(|dir| {
+                    paths.push((new_pos, dir, path.clone()));
+                })
+        }
+    }
+    subpaths
+}
+
+fn find_by_value(world: HashMap<Position, Tile>, tile: char) -> Position {
+    for (pos, t) in world.iter() {
+        if t == &Tile::from(tile) {
+            return pos.clone();
+        }
+    }
+    panic!("not found");
+}
+
+fn distance_from(
+    world: HashMap<Position, Tile>,
+    dir: Direction,
+    curr: Position,
+    next: Position,
+) -> Option<usize> {
+    use Direction::*;
+    if curr == next {
+        return Some(0);
+    }
+
     vec![Up, Down, Left, Right]
         .into_iter()
-        .flat_map(|direction| {
-            let world = world.clone();
-            let position = start.clone();
-            walk(world, keys, direction, position)
+        .filter(|direction| direction != &dir.opposite())
+        .flat_map(|dir| {
+            let new_pos = curr.move_forward(&dir);
+            if new_pos == next {
+                return Some(1);
+            };
+
+            match world.get(&new_pos) {
+                Some(&Tile::Wall) => None,
+                _ => distance_from(world.clone(), dir, new_pos, next)
+                    .and_then(|steps| Some(steps + 1)),
+            }
         })
+        .min()
+}
+
+fn min_path(
+    world: &HashMap<Position, Tile>,
+    curr_tile: char,
+    next_tile: char,
+    paths: Vec<Vec<char>>,
+    cache: &mut HashMap<(char, char), usize>,
+) -> usize {
+    let mut cache = cache;
+    let steps = match cache.get(&(curr_tile, next_tile)) {
+        Some(&steps) => steps,
+        None => {
+            let curr_position = find_by_value(world.clone(), curr_tile);
+            let next_position = find_by_value(world.clone(), next_tile);
+
+            use Direction::*;
+            let steps = vec![Up, Down, Left, Right]
+                .into_iter()
+                .flat_map(|dir| distance_from(world.clone(), dir, curr_position, next_position))
+                .min()
+                .unwrap();
+            cache.insert((next_tile, curr_tile), steps);
+            cache.insert((curr_tile, next_tile), steps);
+            steps
+        }
+    };
+
+    let paths = paths
+        .clone()
+        .iter()
+        .map(|path| {
+            path.into_iter()
+                .filter(|&ch| {
+                    ch != &(next_tile)
+                        && ch
+                            != (next_tile
+                                .to_string()
+                                .to_uppercase()
+                                .chars()
+                                .collect::<Vec<char>>()
+                                .first()
+                                .unwrap())
+                })
+                .map(|ch| ch.to_owned())
+                .collect::<Vec<char>>()
+        })
+        .filter(|path| path.len() > 0)
+        .collect::<Vec<Vec<char>>>();
+
+    if paths.iter().all(|path| path.len() == 0) {
+        return steps;
+    }
+
+    let keys = paths
+        .clone()
+        .into_iter()
+        .flat_map(|path| match path.first() {
+            c @ Some('a'..='z') => Some(c.cloned()),
+            _ => None,
+        })
+        .flatten()
+        .collect::<Vec<char>>();
+
+    keys.into_iter()
+        .map(|tile| min_path(&world, next_tile, tile, paths.clone(), &mut cache))
+        .min()
+        .unwrap()
+        + steps
+}
+
+fn solve(world: HashMap<Position, Tile>) -> usize {
+    let paths = find_paths(world.clone());
+    println!("paths: {:?}", paths);
+
+    let mut cache: HashMap<(char, char), usize> = HashMap::new();
+    let start = '@';
+
+    let keys = paths
+        .clone()
+        .into_iter()
+        .flat_map(|path| match path.first() {
+            c @ Some('a'..='z') => Some(c.cloned()),
+            _ => None,
+        })
+        .flatten()
+        .collect::<Vec<char>>();
+    //println!("keys: {:?}", keys);
+
+    keys.into_iter()
+        .map(|tile| min_path(&world, start, tile, paths.clone(), &mut cache))
         .min()
         .unwrap()
 }
@@ -240,49 +309,49 @@ mod tests {
     #[test]
     fn part1() {
         let input = "#########
-#b.A.@.a#
-#########";
+        #b.A.@.a#
+        #########";
         let steps = solve(parse(input));
         assert_eq!(8, steps);
 
         let input = "########################
-#f.D.E.e.C.b.A.@.a.B.c.#
-######################.#
-#d.....................#
-########################";
+        #f.D.E.e.C.b.A.@.a.B.c.#
+        ######################.#
+        #d.....................#
+        ########################";
         let steps = solve(parse(input));
         assert_eq!(86, steps);
 
         let input = "########################
-#...............b.C.D.f#
-#.######################
-#.....@.a.B.c.d.A.e.F.g#
-########################";
+        #...............b.C.D.f#
+        #.######################
+        #.....@.a.B.c.d.A.e.F.g#
+        ########################";
 
         let steps = solve(parse(input));
         assert_eq!(132, steps);
 
-        //let input = "#################
-        //#i.G..c...e..H.p#
-        //########.########
-        //#j.A..b...f..D.o#
-        //########@########
-        //#k.E..a...g..B.n#
-        //########.########
-        //#l.F..d...h..C.m#
-        //#################";
-
-        //let steps = solve(parse(input));
-        //assert_eq!(136, steps);
-
-        let input = "########################
-#@..............ac.GI.b#
-###d#e#f################
-###A#B#C################
-###g#h#i################
-########################";
+        let input = "#################
+        #i.G..c...e..H.p#
+        ########.########
+        #j.A..b...f..D.o#
+        ########@########
+        #k.E..a...g..B.n#
+        ########.########
+        #l.F..d...h..C.m#
+        #################";
 
         let steps = solve(parse(input));
-        assert_eq!(80, steps);
+        assert_eq!(136, steps);
+
+        let input = "########################
+        #@..............ac.GI.b#
+        ###d#e#f################
+        ###A#B#C################
+        ###g#h#i################
+        ########################";
+
+        let steps = solve(parse(input));
+        assert_eq!(81, steps);
     }
 }
