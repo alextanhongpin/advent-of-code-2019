@@ -1,6 +1,16 @@
 use std::collections::{HashMap, HashSet};
+use std::error::Error;
+use std::fs;
 
-fn main() {}
+fn main() -> Result<(), Box<dyn Error>> {
+    let input = fs::read_to_string("./src/input.txt")?;
+    let input = input.trim();
+
+    let steps = solve(parse(input));
+    assert_eq!(81, steps);
+
+    Ok(())
+}
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 struct Position {
@@ -50,6 +60,18 @@ enum Tile {
     Wall,
     Key(char),
     Door(char),
+}
+
+impl Into<char> for Tile {
+    fn into(self) -> char {
+        match self {
+            Tile::Player => '@',
+            Tile::Empty => '.',
+            Tile::Wall => '#',
+            Tile::Key(c) => c,
+            Tile::Door(c) => c,
+        }
+    }
 }
 
 impl From<char> for Tile {
@@ -132,7 +154,6 @@ fn find_paths(world: HashMap<Position, Tile>) -> Vec<Vec<char>> {
         let mut path = head.2;
 
         if visited.contains(&pos) {
-            println!("visited: {:?}", pos);
             continue;
         }
 
@@ -171,42 +192,64 @@ fn find_paths(world: HashMap<Position, Tile>) -> Vec<Vec<char>> {
     subpaths
 }
 
-fn find_by_value(world: HashMap<Position, Tile>, tile: char) -> Position {
-    for (pos, t) in world.iter() {
-        if t == &Tile::from(tile) {
+fn find_by_value(world: &HashMap<Position, Tile>, tile: char) -> Position {
+    for (pos, t) in world {
+        let t: char = t.clone().into();
+        if t == tile {
             return pos.clone();
         }
     }
     panic!("not found");
 }
 
-fn distance_from(
-    world: HashMap<Position, Tile>,
-    dir: Direction,
-    curr: Position,
-    next: Position,
-) -> Option<usize> {
+fn find_distance(
+    world: &HashMap<Position, Tile>,
+    start: char,
+    keys: Vec<char>,
+    cache: &mut HashMap<(char, char), usize>,
+) {
+    let mut n_keys = keys.len();
     use Direction::*;
-    if curr == next {
-        return Some(0);
+    use Tile::*;
+
+    if keys.iter().all(|&k| cache.contains_key(&(k, start))) {
+        return;
     }
 
-    vec![Up, Down, Left, Right]
-        .into_iter()
-        .filter(|direction| direction != &dir.opposite())
-        .flat_map(|dir| {
-            let new_pos = curr.move_forward(&dir);
-            if new_pos == next {
-                return Some(1);
-            };
+    let initial_pos = find_by_value(&world, start);
+    let mut visited: HashSet<Position> = HashSet::new();
+    visited.insert(initial_pos);
+    let mut moves: Vec<Position> = vec![initial_pos];
+    let mut step = 0;
 
-            match world.get(&new_pos) {
-                Some(&Tile::Wall) => None,
-                _ => distance_from(world.clone(), dir, new_pos, next)
-                    .and_then(|steps| Some(steps + 1)),
+    while moves.len() > 0 || n_keys > 0 {
+        let to_move = moves.clone();
+        moves.clear();
+        step += 1;
+
+        for mv in to_move {
+            for dir in vec![Up, Down, Left, Right] {
+                let new_pos = mv.move_forward(&dir);
+                if visited.contains(&new_pos) {
+                    continue;
+                }
+
+                match world.get(&new_pos) {
+                    Some(Wall) => continue,
+                    Some(&Key(c)) => {
+                        cache.insert((start, c), step);
+                        cache.insert((c, start), step);
+                        if n_keys > 0 {
+                            n_keys -= 1;
+                        }
+                    }
+                    _ => {}
+                }
+                visited.insert(new_pos);
+                moves.push(new_pos);
             }
-        })
-        .min()
+        }
+    }
 }
 
 fn min_path(
@@ -215,23 +258,15 @@ fn min_path(
     next_tile: char,
     paths: Vec<Vec<char>>,
     cache: &mut HashMap<(char, char), usize>,
+    path_cache: &mut HashMap<String, usize>,
 ) -> usize {
     let mut cache = cache;
+    let mut path_cache = path_cache;
+
     let steps = match cache.get(&(curr_tile, next_tile)) {
         Some(&steps) => steps,
         None => {
-            let curr_position = find_by_value(world.clone(), curr_tile);
-            let next_position = find_by_value(world.clone(), next_tile);
-
-            use Direction::*;
-            let steps = vec![Up, Down, Left, Right]
-                .into_iter()
-                .flat_map(|dir| distance_from(world.clone(), dir, curr_position, next_position))
-                .min()
-                .unwrap();
-            cache.insert((next_tile, curr_tile), steps);
-            cache.insert((curr_tile, next_tile), steps);
-            steps
+            unimplemented!("steps not found: from {} to {}", curr_tile, next_tile,);
         }
     };
 
@@ -240,18 +275,8 @@ fn min_path(
         .iter()
         .map(|path| {
             path.into_iter()
-                .filter(|&ch| {
-                    ch != &(next_tile)
-                        && ch
-                            != (next_tile
-                                .to_string()
-                                .to_uppercase()
-                                .chars()
-                                .collect::<Vec<char>>()
-                                .first()
-                                .unwrap())
-                })
-                .map(|ch| ch.to_owned())
+                .filter(|&ch| ch != &next_tile && ch != &next_tile.to_ascii_uppercase())
+                .map(ToOwned::to_owned)
                 .collect::<Vec<char>>()
         })
         .filter(|path| path.len() > 0)
@@ -261,21 +286,54 @@ fn min_path(
         return steps;
     }
 
-    let keys = paths
+    let mut path = paths
         .clone()
         .into_iter()
-        .flat_map(|path| match path.first() {
-            c @ Some('a'..='z') => Some(c.cloned()),
-            _ => None,
+        .flat_map(|p| {
+            p.into_iter()
+                .filter(|c| c.is_ascii_lowercase())
+                .collect::<Vec<char>>()
         })
-        .flatten()
         .collect::<Vec<char>>();
+    path.sort();
+    path.dedup();
+    let path = path.iter().collect::<String>();
+    let key = curr_tile.to_string() + &":" + &next_tile.to_string() + &":" + &path;
+    match path_cache.get(&key) {
+        Some(&prev_steps) => prev_steps,
+        None => {
+            let keys = paths
+                .clone()
+                .into_iter()
+                .flat_map(|path| match path.first() {
+                    c @ Some('a'..='z') => Some(c.cloned()),
+                    _ => None,
+                })
+                .flatten()
+                .collect::<Vec<char>>();
 
-    keys.into_iter()
-        .map(|tile| min_path(&world, next_tile, tile, paths.clone(), &mut cache))
-        .min()
-        .unwrap()
-        + steps
+            find_distance(&world, next_tile, keys.clone(), &mut cache);
+
+            let new_steps = keys
+                .into_iter()
+                .map(|tile| {
+                    min_path(
+                        &world,
+                        next_tile,
+                        tile,
+                        paths.clone(),
+                        &mut cache,
+                        &mut path_cache,
+                    )
+                })
+                .min()
+                .unwrap()
+                + steps;
+
+            path_cache.insert(key, new_steps);
+            new_steps
+        }
+    }
 }
 
 fn solve(world: HashMap<Position, Tile>) -> usize {
@@ -283,6 +341,7 @@ fn solve(world: HashMap<Position, Tile>) -> usize {
     println!("paths: {:?}", paths);
 
     let mut cache: HashMap<(char, char), usize> = HashMap::new();
+    let mut path_cache: HashMap<String, usize> = HashMap::new();
     let start = '@';
 
     let keys = paths
@@ -294,10 +353,20 @@ fn solve(world: HashMap<Position, Tile>) -> usize {
         })
         .flatten()
         .collect::<Vec<char>>();
-    //println!("keys: {:?}", keys);
+
+    find_distance(&world, start, keys.clone(), &mut cache);
 
     keys.into_iter()
-        .map(|tile| min_path(&world, start, tile, paths.clone(), &mut cache))
+        .map(|tile| {
+            min_path(
+                &world,
+                start,
+                tile,
+                paths.clone(),
+                &mut cache,
+                &mut path_cache,
+            )
+        })
         .min()
         .unwrap()
 }
