@@ -7,7 +7,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let input = input.trim();
 
     let steps = solve(parse(input));
-    assert_eq!(81, steps);
+    assert_eq!(4700, steps);
 
     Ok(())
 }
@@ -24,18 +24,6 @@ enum Direction {
     Down,
     Left,
     Right,
-}
-
-impl Direction {
-    fn opposite(&self) -> Direction {
-        use Direction::*;
-        match self {
-            Up => Down,
-            Down => Up,
-            Right => Left,
-            Left => Right,
-        }
-    }
 }
 
 impl Position {
@@ -127,71 +115,6 @@ fn draw(world: HashMap<Position, Tile>) {
     println!("");
 }
 
-fn find_paths(world: HashMap<Position, Tile>) -> Vec<Vec<char>> {
-    let start = world
-        .clone()
-        .into_iter()
-        .find(|(_, v)| v == &Tile::Player)
-        .unwrap()
-        .0;
-
-    let mut paths: Vec<(Position, Direction, Vec<char>)> = vec![
-        (start.clone(), Up, vec![]),
-        (start.clone(), Down, vec![]),
-        (start.clone(), Left, vec![]),
-        (start.clone(), Right, vec![]),
-    ];
-
-    use Direction::*;
-    use Tile::*;
-    let mut subpaths: Vec<Vec<char>> = vec![];
-    let mut visited: HashSet<Position> = HashSet::new();
-
-    while paths.len() > 0 {
-        let head = paths.remove(0);
-        let pos = head.0;
-        let dir = head.1;
-        let mut path = head.2;
-
-        if visited.contains(&pos) {
-            continue;
-        }
-
-        // Check if it's junction.
-        if vec![Up, Down, Left, Right]
-            .into_iter()
-            .flat_map(|dir| world.get(&pos.move_forward(&dir)))
-            .filter(|&tile| tile == &Tile::Wall)
-            .count()
-            == 3
-            && pos != start
-        {
-            visited.insert(pos);
-            subpaths.push(path);
-            continue;
-        }
-
-        let new_pos = pos.move_forward(&dir);
-        let keep_walking = match world.get(&new_pos) {
-            Some(&Key(c)) | Some(&Door(c)) => {
-                path.push(c);
-                true
-            }
-            Some(Empty) => true,
-            _ => false,
-        };
-        if keep_walking {
-            vec![Up, Down, Left, Right]
-                .into_iter()
-                .filter(|&direction| direction != dir.opposite())
-                .for_each(|dir| {
-                    paths.push((new_pos, dir, path.clone()));
-                })
-        }
-    }
-    subpaths
-}
-
 fn find_by_value(world: &HashMap<Position, Tile>, tile: char) -> Position {
     for (pos, t) in world {
         let t: char = t.clone().into();
@@ -202,171 +125,17 @@ fn find_by_value(world: &HashMap<Position, Tile>, tile: char) -> Position {
     panic!("not found");
 }
 
-fn find_all_keys(world: &HashMap<Position, Tile>) -> Vec<char> {
-    let mut keys: Vec<char> = vec![];
-    for (_, tile) in world.iter() {
-        match tile {
-            Tile::Key(c) => keys.push(c.to_owned()),
-            _ => (),
-        }
-    }
-    keys
-}
-
 fn find_distance(
     world: &HashMap<Position, Tile>,
-    start: char,
-    keys: Vec<char>,
     cache: &mut HashMap<(char, char), usize>,
-) {
-    let mut n_keys = keys.len();
-    use Direction::*;
-    use Tile::*;
-
-    if keys.iter().all(|&k| cache.contains_key(&(k, start))) {
-        return;
-    }
-
-    let initial_pos = find_by_value(&world, start);
-    let mut visited: HashSet<Position> = HashSet::new();
-    visited.insert(initial_pos);
-    let mut moves: Vec<Position> = vec![initial_pos];
-    let mut step = 0;
-
-    while moves.len() > 0 || n_keys > 0 {
-        let to_move = moves.clone();
-        moves.clear();
-        step += 1;
-
-        for mv in to_move {
-            for dir in vec![Up, Down, Left, Right] {
-                let new_pos = mv.move_forward(&dir);
-                if visited.contains(&new_pos) {
-                    continue;
-                }
-
-                match world.get(&new_pos) {
-                    Some(Wall) => continue,
-                    Some(&Key(c)) => {
-                        cache.insert((start, c), step);
-                        cache.insert((c, start), step);
-                        if n_keys > 0 {
-                            n_keys -= 1;
-                        }
-                    }
-                    _ => {}
-                }
-                visited.insert(new_pos);
-                moves.push(new_pos);
-            }
-        }
-    }
-}
-
-fn min_path(
-    world: &HashMap<Position, Tile>,
-    curr_tile: char,
-    next_tile: char,
-    paths: Vec<Vec<char>>,
-    cache: &mut HashMap<(char, char), usize>,
-    path_cache: &mut HashMap<String, usize>,
-) -> usize {
-    let mut cache = cache;
-    let mut path_cache = path_cache;
-
-    let steps = match cache.get(&(curr_tile, next_tile)) {
-        Some(&steps) => steps,
-        None => {
-            unimplemented!("steps not found: from {} to {}", curr_tile, next_tile,);
-        }
-    };
-
-    let paths = paths
-        .clone()
-        .iter()
-        .map(|path| {
-            path.into_iter()
-                .filter(|&ch| ch != &next_tile && ch != &next_tile.to_ascii_uppercase())
-                .map(ToOwned::to_owned)
-                .collect::<Vec<char>>()
-        })
-        .filter(|path| path.len() > 0)
-        .collect::<Vec<Vec<char>>>();
-
-    if paths.iter().all(|path| path.len() == 0) {
-        return steps;
-    }
-
-    let mut path = paths
-        .clone()
-        .into_iter()
-        .flat_map(|p| {
-            p.into_iter()
-                .filter(|c| c.is_ascii_lowercase())
-                .collect::<Vec<char>>()
-        })
-        .collect::<Vec<char>>();
-    path.sort();
-    path.dedup();
-    let path = path.iter().collect::<String>();
-    let key = curr_tile.to_string() + &":" + &next_tile.to_string() + &":" + &path;
-    match path_cache.get(&key) {
-        Some(&prev_steps) => prev_steps,
-        None => {
-            let keys = paths
-                .clone()
-                .into_iter()
-                .flat_map(|path| match path.first() {
-                    c @ Some('a'..='z') => Some(c.cloned()),
-                    _ => None,
-                })
-                .flatten()
-                .collect::<Vec<char>>();
-
-            find_distance(&world, next_tile, keys.clone(), &mut cache);
-
-            let new_steps = keys
-                .into_iter()
-                .map(|tile| {
-                    min_path(
-                        &world,
-                        next_tile,
-                        tile,
-                        paths.clone(),
-                        &mut cache,
-                        &mut path_cache,
-                    )
-                })
-                .min()
-                .unwrap()
-                + steps;
-
-            path_cache.insert(key, new_steps);
-            new_steps
-        }
-    }
-}
-
-fn find_distance2(
-    world: &HashMap<Position, Tile>,
-    cache: &mut HashMap<String, usize>,
-    moved: &mut HashMap<(char, char), usize>,
     start: Position,
-    initial_steps: usize,
-    start_keys: Vec<char>,
-    n_keys: usize,
 ) {
-    if start_keys.len() == n_keys {
-        return;
-    }
     let tile = world.get(&start).unwrap().clone().into();
 
-    let mut cache = cache;
-    let mut moved = moved;
     let mut visited: HashSet<Position> = HashSet::new();
-    let mut steps = initial_steps;
+    let mut steps = 0;
     visited.insert(start);
-    let mut moves: Vec<(Position, Vec<char>)> = vec![(start, start_keys.clone())];
+    let mut moves: Vec<Position> = vec![start];
 
     use Direction::*;
     use Tile::*;
@@ -376,9 +145,8 @@ fn find_distance2(
         moves.clear();
         steps += 1;
 
-        for (mv, keys) in to_move {
+        for mv in to_move {
             for dir in vec![Up, Down, Left, Right] {
-                let mut keys = keys.clone();
                 let new_pos = mv.move_forward(&dir);
                 if visited.contains(&new_pos) {
                     continue;
@@ -388,54 +156,28 @@ fn find_distance2(
                 let keep_walking = match world.get(&new_pos) {
                     Some(Wall) => false,
                     Some(&Key(c)) => {
-                        if moved.contains_key(&(tile, c)) {
-                            continue;
-                        }
-
-                        if !keys.contains(&c) {
-                            keys.push(c);
-                            let key = format!("{}:{}", c, keys.iter().collect::<String>());
-                            if !cache.contains_key(&key) {
-                                cache.insert(key, steps);
-
-                                moved.insert((tile, c), steps);
-                                moved.insert((c, tile), steps);
-
-                                find_distance2(
-                                    &world,
-                                    &mut cache,
-                                    &mut moved,
-                                    new_pos,
-                                    steps,
-                                    keys.clone(),
-                                    n_keys,
-                                );
-                            } else {
-                                //println!("cache hit");
-                                return;
-                            }
-                        }
-                        keys.len() < n_keys
+                        cache.insert((tile, c), steps);
+                        cache.insert((c, tile), steps);
+                        true
                     }
-                    Some(&Door(c)) => keys.contains(&c.to_ascii_lowercase()),
-                    Some(&Empty) | Some(&Player) => true,
+                    Some(&Door(_)) | Some(&Empty) | Some(&Player) => true,
                     None => false,
                 };
                 if !keep_walking {
                     continue;
                 }
-                moves.push((new_pos, keys));
+                moves.push(new_pos);
             }
         }
     }
 }
 
-fn solve2(world: HashMap<Position, Tile>) -> usize {
-    let mut cache: HashMap<String, usize> = HashMap::new();
+fn find_paths(
+    world: &HashMap<Position, Tile>,
+    cache: &mut HashMap<(char, char), usize>,
+) -> Vec<Vec<char>> {
     let mut visited: HashSet<Position> = HashSet::new();
-    let mut moved: HashMap<(char, char), usize> = HashMap::new();
 
-    let all_keys = find_all_keys(&world);
     let start = find_by_value(&world, '@');
     let mut steps = 0;
     visited.insert(start);
@@ -444,6 +186,7 @@ fn solve2(world: HashMap<Position, Tile>) -> usize {
     use Direction::*;
     use Tile::*;
     let tile = '@';
+    let mut paths: Vec<Vec<char>> = vec![];
 
     while moves.len() > 0 {
         let to_move = moves.clone();
@@ -451,102 +194,172 @@ fn solve2(world: HashMap<Position, Tile>) -> usize {
         steps += 1;
 
         for (mv, keys) in to_move {
+            let mut walls = 0;
             for dir in vec![Up, Down, Left, Right] {
                 let mut keys = keys.clone();
                 let new_pos = mv.move_forward(&dir);
                 if visited.contains(&new_pos) {
+                    if let Some(Wall) = world.get(&new_pos) {
+                        walls += 1;
+                    }
                     continue;
                 }
                 visited.insert(new_pos);
 
                 let keep_walking = match world.get(&new_pos) {
-                    Some(Wall) => false,
-                    Some(&Key(c)) => {
-                        moved.insert((tile, c), steps);
-                        moved.insert((c, tile), steps);
-                        if !keys.contains(&c) {
-                            keys.push(c);
-                            let key = format!("{}:{}", c, keys.iter().collect::<String>());
-                            if !cache.contains_key(&key) {
-                                cache.insert(key, steps);
-                                //find_distance2(
-                                //&world,
-                                //&mut cache,
-                                //&mut moved,
-                                //new_pos,
-                                //steps,
-                                //keys.clone(),
-                                //all_keys.len(),
-                                //);
-                            }
-                        }
-                        keys.len() < all_keys.len()
+                    Some(Wall) => {
+                        walls += 1;
+                        false
                     }
-                    _ => true
-                    //Some(&Door(c)) => keys.contains(&c.to_ascii_lowercase()),
-                    //Some(&Empty) | Some(&Player) => true,
-                    //None => false,
+                    Some(&Key(c)) => {
+                        cache.insert((tile, c), steps);
+                        cache.insert((c, tile), steps);
+                        keys.push(c);
+                        true
+                    }
+                    Some(&Door(c)) => {
+                        keys.push(c);
+                        true
+                    }
+                    Some(&Empty) | Some(&Player) => true,
+                    None => false,
                 };
                 if !keep_walking {
                     continue;
                 }
                 moves.push((new_pos, keys));
             }
+            if walls == 3 {
+                paths.push(keys);
+            }
         }
     }
-    println!("cache: {:?}", cache);
-    println!("{:?}", moved);
+    paths
+}
 
-    cache
+fn find_remaining_keys(
+    world: &HashMap<Position, Tile>,
+    taken: &mut HashMap<String, usize>,
+    cache: &mut HashMap<(char, char), usize>,
+    start: char,
+    paths: Vec<Vec<char>>,
+) -> Option<usize> {
+    let mut taken = taken;
+    let mut cache = cache;
+
+    let keys_to_visit = paths
+        .iter()
+        .flat_map(|path| match path.first() {
+            c @ Some('a'..='z') => Some(c),
+            _ => None,
+        })
+        .flatten()
+        .collect::<Vec<&char>>();
+
+    if keys_to_visit.len() == 0 {
+        return Some(0);
+    }
+
+    if !keys_to_visit
+        .iter()
+        .all(|&key| cache.contains_key(&(start, *key)))
+    {
+        find_distance(&world, &mut cache, find_by_value(&world, start));
+    }
+
+    keys_to_visit
         .into_iter()
-        .map(|(key, steps)| {
-            let keys = key.split(":").nth(1).unwrap();
-            if keys.len() == all_keys.len() {
-                Some(steps)
-            } else {
-                None
+        .map(|&key| {
+            let steps = cache.get(&(start, key)).unwrap().clone();
+            let paths = paths
+                .clone()
+                .into_iter()
+                .map(|path| {
+                    path.into_iter()
+                        .filter(|&ch| ch != key && ch != key.to_ascii_uppercase())
+                        .collect::<Vec<char>>()
+                })
+                .filter(|path| path.len() > 0)
+                .collect::<Vec<Vec<char>>>();
+
+            let mut path_key = paths
+                .clone()
+                .into_iter()
+                .map(|path| path.into_iter().collect::<String>())
+                .collect::<Vec<String>>();
+            path_key.sort();
+            let cache_key = format!("{}:{}:{}", start, key, path_key.join(":"));
+            if taken.contains_key(&cache_key) {
+                return taken.get(&cache_key).cloned();
             }
+
+            let min_steps = find_remaining_keys(&world, &mut taken, &mut cache, key, paths.clone())
+                .and_then(|s| Some(steps + s))
+                .unwrap();
+
+            taken.insert(cache_key, min_steps);
+
+            Some(min_steps)
         })
         .flatten()
         .min()
-        .unwrap()
 }
 
 fn solve(world: HashMap<Position, Tile>) -> usize {
-    return solve2(world);
-    //println!("solver2: {:?}", solve2(world.clone()));
-    //let paths = find_paths(world.clone());
-    //println!("paths: {:?}", paths);
+    let mut taken: HashMap<String, usize> = HashMap::new();
+    let mut cache: HashMap<(char, char), usize> = HashMap::new();
 
-    //let mut cache: HashMap<(char, char), usize> = HashMap::new();
-    //let mut path_cache: HashMap<String, usize> = HashMap::new();
-    //let start = '@';
+    let paths = find_paths(&world, &mut cache);
+    let tile = '@';
 
-    //let keys = paths
-    //.clone()
-    //.into_iter()
-    //.flat_map(|path| match path.first() {
-    //c @ Some('a'..='z') => Some(c.cloned()),
-    //_ => None,
-    //})
-    //.flatten()
-    //.collect::<Vec<char>>();
+    let keys_to_visit = paths
+        .iter()
+        .flat_map(|path| match path.first() {
+            c @ Some('a'..='z') => Some(c),
+            _ => None,
+        })
+        .flatten()
+        .collect::<Vec<&char>>();
 
-    //find_distance(&world, start, keys.clone(), &mut cache);
+    let min = keys_to_visit
+        .into_iter()
+        .map(|&key| {
+            let steps = cache.get(&(tile, key)).unwrap().clone();
+            let paths = paths
+                .clone()
+                .into_iter()
+                .map(|path| {
+                    path.into_iter()
+                        .filter(|&ch| ch != key && ch != key.to_ascii_uppercase())
+                        .collect::<Vec<char>>()
+                })
+                .filter(|path| path.len() > 0)
+                .collect::<Vec<Vec<char>>>();
 
-    //keys.into_iter()
-    //.map(|tile| {
-    //min_path(
-    //&world,
-    //start,
-    //tile,
-    //paths.clone(),
-    //&mut cache,
-    //&mut path_cache,
-    //)
-    //})
-    //.min()
-    //.unwrap()
+            let mut path_key = paths
+                .clone()
+                .into_iter()
+                .map(|path| path.into_iter().collect::<String>())
+                .collect::<Vec<String>>();
+            path_key.sort();
+            let cache_key = format!("{}:{}:{}", tile, key, path_key.join(":"));
+            if taken.contains_key(&cache_key) {
+                return taken.get(&cache_key).cloned();
+            }
+
+            let min_steps = find_remaining_keys(&world, &mut taken, &mut cache, key, paths)
+                .and_then(|s| Some(steps + s))
+                .unwrap();
+
+            taken.insert(cache_key, min_steps);
+
+            Some(min_steps)
+        })
+        .flatten()
+        .min()
+        .unwrap();
+
+    min
 }
 
 #[cfg(test)]
