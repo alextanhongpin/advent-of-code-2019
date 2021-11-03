@@ -35,16 +35,6 @@ pub fn find_nearby_keys(
         .into_iter()
         .map(|&key| {
             let steps = cache.get(&(start, key)).unwrap_or(&0).clone();
-            let paths = paths
-                .clone()
-                .into_iter()
-                .map(|path| {
-                    path.into_iter()
-                        .filter(|&ch| ch != key && ch != key.to_ascii_uppercase())
-                        .collect::<Vec<char>>()
-                })
-                .filter(|path| path.len() > 0)
-                .collect::<Vec<Vec<char>>>();
             Some((key, steps))
         })
         .flatten()
@@ -193,4 +183,30 @@ fn draw(world: HashMap<Position, Tile>) {
         println!("{:?}", row.join(""));
     }
     println!("");
+}
+
+pub fn path_key(all_paths: &Vec<(char, Vec<Vec<char>>)>) -> String {
+    let mut path_key = all_paths
+        .clone()
+        .into_iter()
+        .map(|(start, paths)| subpath_key(start, &paths))
+        .filter(|key| key.len() > 0)
+        .collect::<Vec<String>>();
+    path_key.sort();
+
+    path_key.join(":").trim().to_string()
+}
+
+pub fn subpath_key(start: char, paths: &Vec<Vec<char>>) -> String {
+    let mut path_key = paths
+        .clone()
+        .into_iter()
+        .filter(|path| path.len() > 0)
+        .map(|path| path.into_iter().collect::<String>())
+        .collect::<Vec<String>>();
+    path_key.sort();
+    if path_key.len() == 0 {
+        return "".to_string();
+    }
+    format!("{}-{}", start, path_key.join(":").trim())
 }
