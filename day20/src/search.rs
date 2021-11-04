@@ -7,7 +7,6 @@ pub type Depth = i32;
 type Tile = char;
 
 type Map = HashMap<Point, Tile>;
-type Portal = HashMap<Point, Point>;
 
 pub fn find_portals(map: &Map, start: Point, end: Point) -> Vec<(Point, Step, Depth)> {
     let mut portals: Vec<(Point, Step, Depth)> = Vec::new();
