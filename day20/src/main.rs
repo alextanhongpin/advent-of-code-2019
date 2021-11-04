@@ -192,13 +192,6 @@ fn flood2(
             continue;
         }
 
-        // This large number is used to check how much did the path repeats itself.
-        // I don't have any idea on what heuristic to check against infinite recursion, so I just
-        // use a large number.
-        if *visited.entry(curr_move).or_insert(curr_depth) > 3000 {
-            continue;
-        }
-
         let is_start_or_end = curr_move == start || curr_move == end;
         match map.get(&curr_move) {
             Some('%') => {
@@ -213,8 +206,9 @@ fn flood2(
         }
 
         if curr_depth == 0 && curr_move == end {
+            // We only look for one solution.
             steps.push(curr_step);
-            continue;
+            break;
         }
 
         *visited.entry(curr_move).or_insert(curr_depth) += 1;
