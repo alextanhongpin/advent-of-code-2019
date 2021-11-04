@@ -231,8 +231,8 @@ fn depth(
     let mut visited: HashSet<((usize, usize), usize)> = HashSet::new();
     let mut moves: Vec<(
         (usize, usize),
-        usize,
-        usize,
+        usize, // depth
+        usize, // steps
         HashSet<((usize, usize), usize)>,
     )> = vec![(start, 0, 1, visited.clone())];
     let mut all_steps: Vec<usize> = vec![];
@@ -279,7 +279,6 @@ fn depth(
                             continue;
                         }
                         if dir == end {
-                            println!("found end: {}", steps);
                             all_steps.push(steps);
                             break;
                         }
