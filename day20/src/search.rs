@@ -4,9 +4,9 @@ pub type Point = (usize, usize);
 pub type Step = usize;
 pub type Depth = i32;
 
-type Tile = char;
+pub type Tile = char;
 
-type Map = HashMap<Point, Tile>;
+pub type Map = HashMap<Point, Tile>;
 
 pub fn find_portals(map: &Map, start: Point, end: Point) -> Vec<(Point, Step, Depth)> {
     let mut portals: Vec<(Point, Step, Depth)> = Vec::new();
@@ -88,8 +88,8 @@ pub fn flood(
             continue;
         }
 
-        visited.insert(curr_move.clone());
-        let next_moves = find_portals(&map, curr_move, end);
+        visited.insert(curr_move);
+        let next_moves = find_portals(map, curr_move, end);
         moves.append(
             &mut next_moves
                 .into_iter()

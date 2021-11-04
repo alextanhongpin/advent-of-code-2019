@@ -14,19 +14,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn parse(
-    input: &str,
-) -> (
-    HashMap<(usize, usize), char>,
-    (usize, usize),
-    (usize, usize),
-    HashMap<(usize, usize), (usize, usize)>,
-) {
+fn parse(input: &str) -> (Map, Point, Point, HashMap<Point, Point>) {
     let mut map = HashMap::new();
     let positions = input
         .lines()
         .map(|line| line.chars().collect())
-        .collect::<Vec<Vec<char>>>();
+        .collect::<Vec<Vec<Tile>>>();
 
     let x = positions[0].len();
     let y = positions.len();
@@ -216,7 +209,7 @@ fn flood2(
         let next_moves = if cache.contains_key(&curr_move) {
             cache.get(&curr_move).unwrap().clone()
         } else {
-            let next_moves = find_portals(&map, curr_move, end);
+            let next_moves = find_portals(map, curr_move, end);
             cache.insert(curr_move, next_moves.clone());
             next_moves
         };
