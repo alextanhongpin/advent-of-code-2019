@@ -2,10 +2,13 @@ use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fs;
 
+mod search;
+use search::*;
+
 fn main() -> Result<(), Box<dyn Error>> {
     let input = fs::read_to_string("./src/input.txt")?;
 
-    assert_eq!(664, solve(&input));
+    assert_eq!(664, part1(&input));
     assert_eq!(7334, part2(&input));
 
     Ok(())
@@ -155,161 +158,89 @@ fn draw(map: &HashMap<(usize, usize), char>) {
     }
 }
 
-fn solve(input: &str) -> usize {
+fn part1(input: &str) -> usize {
     let (map, start, end, portals) = parse(input);
     draw(&map);
+
     flood(&map, start, end, &portals)
 }
 
 fn part2(input: &str) -> usize {
     let (map, start, end, portals) = parse(input);
     draw(&map);
-    depth(&map, start, end, &portals)
+    flood2(&map, start, end, &portals)
 }
 
-fn flood(
+fn flood2(
     map: &HashMap<(usize, usize), char>,
     start: (usize, usize),
     end: (usize, usize),
     portals: &HashMap<(usize, usize), (usize, usize)>,
 ) -> usize {
-    let mut visited: HashSet<(usize, usize)> = HashSet::new();
-    let mut moves: Vec<((usize, usize), usize)> = vec![(start, 1)];
-    let mut all_steps: Vec<usize> = vec![];
+    let mut cache: HashMap<Point, Vec<(Point, Step, Depth)>> = HashMap::new();
+    let mut visited: HashMap<Point, Depth> = HashMap::new();
+    let mut moves: Vec<(Point, Step, Depth)> = vec![(start, 0, 0)];
+    let mut steps: Vec<Step> = vec![];
 
     loop {
         if moves.is_empty() {
             break;
         }
 
-        let next_moves = moves.clone();
-        moves.clear();
+        let (curr_move, curr_step, curr_depth) = moves.remove(0);
+        if curr_depth < 0 {
+            continue;
+        }
 
-        for (m, steps) in next_moves {
-            for dir in [
-                (m.0, m.1 + 1),
-                (m.0, m.1 - 1),
-                (m.0 + 1, m.1),
-                (m.0 - 1, m.1),
-            ] {
-                if visited.contains(&dir) {
+        // This large number is used to check how much did the path repeats itself.
+        // I don't have any idea on what heuristic to check against infinite recursion, so I just
+        // use a large number.
+        if *visited.entry(curr_move).or_insert(curr_depth) > 3000 {
+            continue;
+        }
+
+        let is_start_or_end = curr_move == start || curr_move == end;
+        match map.get(&curr_move) {
+            Some('%') => {
+                if curr_depth == 0 && !is_start_or_end {
                     continue;
                 }
-
-                match map.get(&dir) {
-                    Some('.') => {
-                        moves.push((dir, steps + 1));
-                        visited.insert(dir);
-                    }
-                    Some('#') => {}
-                    Some('@') | Some('%') => {
-                        if dir == end {
-                            all_steps.push(steps);
-                            break;
-                        }
-                        if portals.contains_key(&dir) {
-                            let next = portals.get(&dir).unwrap();
-                            moves.push((*next, steps + 2));
-                            visited.insert(*next);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
-
-    all_steps.into_iter().min().unwrap()
-}
-
-fn depth(
-    map: &HashMap<(usize, usize), char>,
-    start: (usize, usize),
-    end: (usize, usize),
-    portals: &HashMap<(usize, usize), (usize, usize)>,
-) -> usize {
-    let mut visited: HashSet<((usize, usize), usize)> = HashSet::new();
-    let mut moves: Vec<(
-        (usize, usize),
-        usize, // depth
-        usize, // steps
-        HashSet<((usize, usize), usize)>,
-    )> = vec![(start, 0, 1, visited.clone())];
-    let mut all_steps: Vec<usize> = vec![];
-
-    loop {
-        if moves.is_empty() {
-            break;
-        }
-
-        let next_moves = moves.clone();
-        moves.clear();
-
-        for (m, depth, steps, doors) in next_moves {
-            for dir in [
-                (m.0, m.1 + 1),
-                (m.0, m.1 - 1),
-                (m.0 + 1, m.1),
-                (m.0 - 1, m.1),
-            ] {
-                if visited.contains(&(dir, depth))
-                    || (depth > 1
-                        && (1..depth)
-                            .into_iter()
-                            .filter(|&d| doors.contains(&(dir, d)))
-                            .count()
-                            > 5)
-                {
+                if curr_depth > 0 && is_start_or_end {
                     continue;
                 }
-
-                match map.get(&dir) {
-                    Some('.') => {
-                        moves.push((dir, depth, steps + 1, doors.clone()));
-                        visited.insert((dir, depth));
-                    }
-                    Some('#') => {}
-                    Some(&inout) if inout == '@' || inout == '%' => {
-                        // When the depth is 1, the outer layer START and END functions as wall.
-                        if depth != 0 && inout == '%' && (dir == start || dir == end) {
-                            continue;
-                        }
-                        // When the depth is 0, only the outer layer START and END functions.
-                        if depth == 0 && inout == '%' && (dir != start && dir != end) {
-                            continue;
-                        }
-                        if dir == end {
-                            all_steps.push(steps);
-                            break;
-                        }
-                        let up_or_down = || {
-                            // Inner layer increases depth by 1.
-                            if inout == '@' {
-                                depth + 1
-                            } else {
-                                // Outer layer decreases depth by 1.
-                                depth - 1
-                            }
-                        };
-                        if portals.contains_key(&dir) {
-                            let mut doors = doors.clone();
-                            doors.insert((dir, depth));
-
-                            let next = portals.get(&dir).unwrap();
-                            let depth = up_or_down();
-
-                            visited.insert((*next, depth));
-                            doors.insert((*next, depth));
-                            moves.push((*next, depth, steps + 2, doors.clone()));
-                        }
-                    }
-                    _ => {}
-                }
             }
+            _ => {}
         }
-    }
 
-    all_steps.into_iter().min().unwrap()
+        if curr_depth == 0 && curr_move == end {
+            steps.push(curr_step);
+            continue;
+        }
+
+        *visited.entry(curr_move).or_insert(curr_depth) += 1;
+
+        let next_moves = if cache.contains_key(&curr_move) {
+            cache.get(&curr_move).unwrap().clone()
+        } else {
+            let next_moves = find_portals(&map, curr_move, end);
+            cache.insert(curr_move, next_moves.clone());
+            next_moves
+        };
+        moves.append(
+            &mut next_moves
+                .into_iter()
+                .map(
+                    |(next_move, next_step, depth)| match portals.get(&next_move) {
+                        Some(&portal_move) => {
+                            (portal_move, curr_step + next_step + 1, curr_depth + depth)
+                        }
+                        None => (next_move, curr_step + next_step, curr_depth + depth),
+                    },
+                )
+                .collect::<Vec<(Point, Step, Depth)>>(),
+        );
+    }
+    steps.into_iter().min().unwrap()
 }
 
 #[cfg(test)]
@@ -317,7 +248,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn part1() {
+    fn test1() {
         let input = "         A           
          A           
   #######.#########  
@@ -338,7 +269,7 @@ FG..#########.....#
              Z       
              Z       
 ";
-        assert_eq!(23, solve(input));
+        assert_eq!(23, part1(input));
 
         let input = "                   A               
                    A               
@@ -377,7 +308,7 @@ YN......#               VT..#....QG
   #########.###.###.#############  
            B   J   C               
            U   P   P               ";
-        assert_eq!(58, solve(input));
+        assert_eq!(58, part1(input));
     }
 
     #[test]
